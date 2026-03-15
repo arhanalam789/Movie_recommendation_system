@@ -294,6 +294,15 @@ async def recommend_tfidf(title: str = Query(..., min_length=1), top_n: int = Qu
     recs = tfidf_recommend_titles(title, top_n=top_n)
     return [{"title": t, "score": s} for t, s in recs]
 
+@app.get("/movie/recommendations/{tmdb_id}", response_model=SearchBundleResponse)
+async def recommend_by_id(tmdb_id: int, tfidf_top_n: int = Query(12, ge=1, le=30), genre_limit: int = Query(12, ge=1, le=30)):
+    """
+    Generate recommendations using a TMDB ID directly. 
+    This is much more reliable than searching by title string.
+    """
+    details = await tmdb_movie_details(tmdb_id)
+    return await _generate_bundle(details, tfidf_top_n, genre_limit)
+
 @app.get("/movie/search", response_model=SearchBundleResponse)
 async def search_bundle(query: str = Query(..., min_length=1), tfidf_top_n: int = Query(12, ge=1, le=30), genre_limit: int = Query(12, ge=1, le=30)):
     best = await tmdb_search_first(query)
@@ -301,38 +310,44 @@ async def search_bundle(query: str = Query(..., min_length=1), tfidf_top_n: int 
         raise HTTPException(status_code=404, detail=f"No TMDB movie found for query: {query}")
     tmdb_id = int(best["id"])
     details = await tmdb_movie_details(tmdb_id)
-    
-    print(f"DEBUG: Searching recommendations for: {details.title}")
+    return await _generate_bundle(details, tfidf_top_n, genre_limit)
+
+async def _generate_bundle(details: TMDBMovieDetails, tfidf_top_n: int, genre_limit: int) -> SearchBundleResponse:
+    print(f"DEBUG: Generating recommendations for: {details.title} (ID: {details.tmdb_id})")
     
     tfidf_items: List[TFIDFRecItem] = []
     recs: List[Tuple[str, float]] = []
+    
+    # Try TF-IDF
     try:
         recs = tfidf_recommend_titles(details.title, top_n=tfidf_top_n)
-        print(f"DEBUG: TF-IDF found {len(recs)} candidates.")
     except Exception as e:
-        print(f"DEBUG: TF-IDF first try failed: {e}")
-        try:
-            recs = tfidf_recommend_titles(query, top_n=tfidf_top_n)
-            print(f"DEBUG: TF-IDF fallback search found {len(recs)} candidates.")
-        except Exception as e2:
-            print(f"DEBUG: TF-IDF fallback also failed: {e2}")
-            recs = []
+        print(f"DEBUG: TF-IDF failed for {details.title}: {e}")
+        recs = []
     
     async def fetch_item(title, score):
         card = await attach_tmdb_card_by_title(title)
-        if card:
-             print(f"DEBUG: Attached TMDB card for {title}")
-        else:
-             print(f"DEBUG: Failed to find TMDB card for local movie: {title}")
         return TFIDFRecItem(title=title, score=score, tmdb=card)
 
-    tfidf_items = await asyncio.gather(*[fetch_item(t, s) for t, s in recs])
+    if recs:
+        tfidf_items = await asyncio.gather(*[fetch_item(t, s) for t, s in recs])
         
+    # Genre Recommendations
     genre_recs: List[TMDBMovieCard] = []
     if details.genres:
         genre_id = details.genres[0]["id"]
-        discover = await tmdb_get("/discover/movie", {"with_genres": genre_id, "language": "en-US", "sort_by": "popularity.desc", "page": 1})
+        discover = await tmdb_get("/discover/movie", {
+            "with_genres": genre_id, 
+            "language": "en-US", 
+            "sort_by": "popularity.desc", 
+            "page": 1
+        })
         cards = await tmdb_cards_from_results(discover.get("results", []), limit=genre_limit)
         genre_recs = [c for c in cards if c.tmdb_id != details.tmdb_id]
         
-    return SearchBundleResponse(query=query, movie_details=details, tfidf_recommendations=tfidf_items, genre_recommendations=genre_recs)
+    return SearchBundleResponse(
+        query=details.title, 
+        movie_details=details, 
+        tfidf_recommendations=tfidf_items, 
+        genre_recommendations=genre_recs
+    )
