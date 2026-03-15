@@ -1,6 +1,7 @@
 import os
 import pickle
 import difflib
+import asyncio
 from typing import Optional, List, Dict, Any, Tuple
 
 import numpy as np
@@ -229,19 +230,24 @@ async def attach_tmdb_card_by_title(title: str) -> Optional[TMDBMovieCard]:
 @app.on_event("startup")
 def load_pickles():
     global df, indices_obj, tfidf_matrix, tfidf_obj, TITLE_TO_IDX
+    print("DEBUG: Starting to load pickle files...")
+    try:
+        with open(DF_PATH, "rb") as f:
+            df = pickle.load(f)
+        with open(INDICES_PATH, "rb") as f:
+            indices_obj = pickle.load(f)
+        with open(TFIDF_MATRIX_PATH, "rb") as f:
+            tfidf_matrix = pickle.load(f)
+        with open(TFIDF_PATH, "rb") as f:
+            tfidf_obj = pickle.load(f)
 
-    with open(DF_PATH, "rb") as f:
-        df = pickle.load(f)
-    with open(INDICES_PATH, "rb") as f:
-        indices_obj = pickle.load(f)
-    with open(TFIDF_MATRIX_PATH, "rb") as f:
-        tfidf_matrix = pickle.load(f)
-    with open(TFIDF_PATH, "rb") as f:
-        tfidf_obj = pickle.load(f)
-
-    TITLE_TO_IDX = build_title_to_idx_map(indices_obj)
-    if df is None or "title" not in df.columns:
-        raise RuntimeError("df.pkl must contain a DataFrame with a 'title' column")
+        TITLE_TO_IDX = build_title_to_idx_map(indices_obj)
+        print(f"DEBUG: Successfully loaded {len(df)} movies into memory.")
+        if df is None or "title" not in df.columns:
+            raise RuntimeError("df.pkl must contain a DataFrame with a 'title' column")
+    except Exception as e:
+        print(f"DEBUG ERROR: Failed to load pickles: {e}")
+        raise e
 
 # =========================
 # ROUTES
@@ -296,18 +302,31 @@ async def search_bundle(query: str = Query(..., min_length=1), tfidf_top_n: int 
     tmdb_id = int(best["id"])
     details = await tmdb_movie_details(tmdb_id)
     
+    print(f"DEBUG: Searching recommendations for: {details.title}")
+    
     tfidf_items: List[TFIDFRecItem] = []
     recs: List[Tuple[str, float]] = []
     try:
         recs = tfidf_recommend_titles(details.title, top_n=tfidf_top_n)
-    except Exception:
+        print(f"DEBUG: TF-IDF found {len(recs)} candidates.")
+    except Exception as e:
+        print(f"DEBUG: TF-IDF first try failed: {e}")
         try:
             recs = tfidf_recommend_titles(query, top_n=tfidf_top_n)
-        except Exception:
+            print(f"DEBUG: TF-IDF fallback search found {len(recs)} candidates.")
+        except Exception as e2:
+            print(f"DEBUG: TF-IDF fallback also failed: {e2}")
             recs = []
-    for title, score in recs:
+    
+    async def fetch_item(title, score):
         card = await attach_tmdb_card_by_title(title)
-        tfidf_items.append(TFIDFRecItem(title=title, score=score, tmdb=card))
+        if card:
+             print(f"DEBUG: Attached TMDB card for {title}")
+        else:
+             print(f"DEBUG: Failed to find TMDB card for local movie: {title}")
+        return TFIDFRecItem(title=title, score=score, tmdb=card)
+
+    tfidf_items = await asyncio.gather(*[fetch_item(t, s) for t, s in recs])
         
     genre_recs: List[TMDBMovieCard] = []
     if details.genres:

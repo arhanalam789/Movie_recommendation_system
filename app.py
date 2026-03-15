@@ -466,24 +466,20 @@ if st.session_state.view == "home":
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Search Bar
-    if "search_query" not in st.session_state:
-        st.session_state.search_query = ""
-        
     typed = st.text_input(
         "🔎 Search by Title", 
-        value=st.session_state.search_query,
         placeholder="Type a movie name: Avengers, Interstellar, The Matrix...",
         label_visibility="collapsed",
-        key="home_search_bar"
+        key="search_query"
     )
-    st.session_state.search_query = typed
 
     # Search Results Mode
     if typed.strip():
         col_clear, _ = st.columns([1, 5])
         with col_clear:
             if st.button("❌ Clear Search"):
-                goto_home(clear_search=True)
+                st.session_state.search_query = ""
+                st.rerun()
 
         if len(typed.strip()) < 2:
             st.caption("Keep typing...")
