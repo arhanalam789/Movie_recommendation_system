@@ -334,43 +334,44 @@ def api_get_json(path: str, params: dict | None = None):
         return None, f"Unexpected Error: {e}"
 
 
-def poster_grid(cards):
-    """Renders a beautiful responsive HTML grid for movie cards."""
+def poster_grid(cards, columns=5):
+    """Renders a beautiful responsive grid for movie cards using st.columns."""
     if not cards:
         st.info("No available recommendations.")
         return
 
-    grid_html = "<div class='movie-grid'>"
-    for m in cards:
-        tmdb_id = m.get("tmdb_id")
-        title = m.get("title", "Untitled").replace("'", "&#39;").replace('"', "&quot;")
-        poster = m.get("poster_url")
-        year = m.get("release_date", "")[:4] if m.get("release_date") else ""
-        vote = m.get("vote_average", 0)
-        
-        img_src = poster if poster else "https://via.placeholder.com/500x750/1e293b/ffffff?text=No+Poster"
-        
-        rating_badge = f"<div class='badge-rating'>⭐ {round(vote, 1) if vote else 'NR'}</div>" 
-        
-        card_html = f"""
-        <a href="?view=details&id={tmdb_id}" target="_self" class="movie-card-link">
-            <div class="movie-card">
-                <div class="poster-wrapper">
-                    <img src="{img_src}" class="movie-poster" alt="{title}" loading="lazy" />
-                    {rating_badge}
-                </div>
-                <div class="movie-info">
-                    <div class="movie-title">{title}</div>
-                    <div class="movie-year">{year}</div>
-                </div>
-            </div>
-        </a>
-        """
-        grid_html += card_html
-        
-    grid_html += "</div>"
-    
-    st.markdown(grid_html, unsafe_allow_html=True)
+    # Calculate rows
+    for i in range(0, len(cards), columns):
+        cols = st.columns(columns)
+        for j, col in enumerate(cols):
+            if i + j < len(cards):
+                m = cards[i + j]
+                tmdb_id = m.get("tmdb_id")
+                title = m.get("title", "Untitled").replace("'", "&#39;").replace('"', "&quot;")
+                poster = m.get("poster_url")
+                year = m.get("release_date", "")[:4] if m.get("release_date") else ""
+                vote = m.get("vote_average", 0)
+                
+                img_src = poster if poster else "https://via.placeholder.com/500x750/1e293b/ffffff?text=No+Poster"
+                
+                rating_badge = f"<div class='badge-rating'>⭐ {round(vote, 1) if vote else 'NR'}</div>" 
+                
+                card_html = f"""
+                <a href="?view=details&id={tmdb_id}" target="_self" class="movie-card-link">
+                    <div class="movie-card">
+                        <div class="poster-wrapper">
+                            <img src="{img_src}" class="movie-poster" alt="{title}" loading="lazy" />
+                            {rating_badge}
+                        </div>
+                        <div class="movie-info">
+                            <div class="movie-title">{title}</div>
+                            <div class="movie-year">{year}</div>
+                        </div>
+                    </div>
+                </a>
+                """
+                with col:
+                    st.markdown(card_html, unsafe_allow_html=True)
 
 
 def to_cards_from_tfidf_items(tfidf_items):
