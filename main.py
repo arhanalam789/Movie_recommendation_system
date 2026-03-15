@@ -1,5 +1,6 @@
 import os
 import pickle
+import difflib
 from typing import Optional, List, Dict, Any, Tuple
 
 import numpy as np
@@ -169,10 +170,19 @@ def get_local_idx_by_title(title: str) -> int:
     global TITLE_TO_IDX
     if TITLE_TO_IDX is None:
         raise HTTPException(status_code=500, detail="TF-IDF index map not initialized")
+    
     key = _norm_title(title)
     if key in TITLE_TO_IDX:
         return int(TITLE_TO_IDX[key])
-    raise HTTPException(status_code=404, detail=f"Title not found in local dataset: '{title}'")
+    
+    # Fuzzy matching fallback
+    existing_titles = list(TITLE_TO_IDX.keys())
+    closest = difflib.get_close_matches(key, existing_titles, n=1, cutoff=0.6)
+    
+    if closest:
+        return int(TITLE_TO_IDX[closest[0]])
+        
+    raise HTTPException(status_code=404, detail=f"Title not found in local dataset even with fuzzy matching: '{title}'")
 
 def tfidf_recommend_titles(query_title: str, top_n: int = 10) -> List[Tuple[str, float]]:
     """

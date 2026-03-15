@@ -292,8 +292,12 @@ if qp_id:
         pass
 
 
-def goto_home():
+def goto_home(clear_search=True):
     st.session_state.view = "home"
+    if clear_search:
+        if "search_query" in st.session_state:
+            st.session_state.search_query = ""
+    
     st.query_params["view"] = "home"
     if "id" in st.query_params:
         del st.query_params["id"]
@@ -452,6 +456,7 @@ if st.session_state.view == "home":
             ],
             format_func=lambda x: x[0],
             index=0,
+            on_change=lambda: st.session_state.update({"search_query": ""})
         )
         cat_value = home_category[1]
 
@@ -461,14 +466,25 @@ if st.session_state.view == "home":
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Search Bar
+    if "search_query" not in st.session_state:
+        st.session_state.search_query = ""
+        
     typed = st.text_input(
         "🔎 Search by Title", 
+        value=st.session_state.search_query,
         placeholder="Type a movie name: Avengers, Interstellar, The Matrix...",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="home_search_bar"
     )
+    st.session_state.search_query = typed
 
     # Search Results Mode
     if typed.strip():
+        col_clear, _ = st.columns([1, 5])
+        with col_clear:
+            if st.button("❌ Clear Search"):
+                goto_home(clear_search=True)
+
         if len(typed.strip()) < 2:
             st.caption("Keep typing...")
         else:
