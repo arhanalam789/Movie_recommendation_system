@@ -593,31 +593,31 @@ elif st.session_state.view == "details":
 
     # Recommendations (TF-IDF + Genre)
     if tmdb_id:
-        with st.spinner("Finding perfect matches for you..."):
+        with st.spinner("🤖 Consulting Trained Hybrid Model..."):
             bundle, err2 = api_get_json(
                 f"/movie/recommendations/{tmdb_id}",
-                params={"tfidf_top_n": 12, "genre_limit": 12},
+                params={"tfidf_top_n": 15, "genre_limit": 12},
             )
 
         if not err2 and bundle:
-            
             tfidf_recs = to_cards_from_tfidf_items(bundle.get("tfidf_recommendations"))
             genre_recs = bundle.get("genre_recommendations", [])
             
-            # Use tabs for a cleaner look
-            tab1, tab2 = st.tabs(["✨ More Like This (Similar Plot)", "🎭 Related by Genre"])
+            st.markdown("### 🤖 Recommendations from Trained Model")
+            st.markdown("<p class='subtext'>These matches are computed based on plot similarity using your TF-IDF model.</p>", unsafe_allow_html=True)
             
-            with tab1:
-                if tfidf_recs:
-                    poster_grid(tfidf_recs)
-                else:
-                    st.info("No detailed plot matches found. Switch to Genre tab.")
-                    
-            with tab2:
-                if genre_recs:
-                    poster_grid(genre_recs)
-                else:
-                    st.info("No genre matches found.")
+            if tfidf_recs:
+                poster_grid(tfidf_recs)
+            else:
+                st.info("💡 Your model hasn't been trained on this specific movie yet. Showing similar genres below.")
+            
+            st.divider()
+            
+            st.markdown("### 🎭 More Like This (Genre)")
+            if genre_recs:
+                poster_grid(genre_recs)
+            else:
+                st.info("No genre matches found.")
         else:
             # Fallback
             st.markdown("### 🎭 Recommended for You")

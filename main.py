@@ -151,22 +151,6 @@ async def tmdb_search_first(query: str) -> Optional[dict]:
     results = data.get("results", [])
     return results[0] if results else None
 
-# =========================
-# TF-IDF Helpers
-# =========================
-def build_title_to_idx_map(indices: Any) -> Dict[str, int]:
-    title_to_idx: Dict[str, int] = {}
-    if isinstance(indices, dict):
-        for k, v in indices.items():
-            title_to_idx[_norm_title(k)] = int(v)
-        return title_to_idx
-    try:
-        for k, v in indices.items():
-            title_to_idx[_norm_title(k)] = int(v)
-        return title_to_idx
-    except Exception:
-        raise RuntimeError("indices.pkl must be dict or pandas Series-like (with .items())")
-
 def get_local_idx_by_title(title: str) -> int:
     global TITLE_TO_IDX
     if TITLE_TO_IDX is None:
@@ -176,14 +160,19 @@ def get_local_idx_by_title(title: str) -> int:
     if key in TITLE_TO_IDX:
         return int(TITLE_TO_IDX[key])
     
-    # Fuzzy matching fallback
+    # Aggressive Fuzzy matching fallback
     existing_titles = list(TITLE_TO_IDX.keys())
-    closest = difflib.get_close_matches(key, existing_titles, n=1, cutoff=0.6)
+    # Try with high cutoff first
+    closest = difflib.get_close_matches(key, existing_titles, n=1, cutoff=0.8)
+    if not closest:
+        # Try with lower cutoff
+        closest = difflib.get_close_matches(key, existing_titles, n=1, cutoff=0.5)
     
     if closest:
+        print(f"DEBUG: Fuzzy Matched '{title}' -> Local Movie: '{closest[0]}'")
         return int(TITLE_TO_IDX[closest[0]])
         
-    raise HTTPException(status_code=404, detail=f"Title not found in local dataset even with fuzzy matching: '{title}'")
+    raise HTTPException(status_code=404, detail=f"Title not found in local dataset: '{title}'")
 
 def tfidf_recommend_titles(query_title: str, top_n: int = 10) -> List[Tuple[str, float]]:
     """
@@ -318,12 +307,18 @@ async def _generate_bundle(details: TMDBMovieDetails, tfidf_top_n: int, genre_li
     tfidf_items: List[TFIDFRecItem] = []
     recs: List[Tuple[str, float]] = []
     
-    # Try TF-IDF
+    # Try TF-IDF (The Trained Model)
     try:
         recs = tfidf_recommend_titles(details.title, top_n=tfidf_top_n)
+        print(f"DEBUG: Model found {len(recs)} matches for '{details.title}'")
     except Exception as e:
-        print(f"DEBUG: TF-IDF failed for {details.title}: {e}")
-        recs = []
+        print(f"DEBUG: Model matching failed for query title: {e}")
+        # Final fallback - try raw indices on the simple query string
+        try:
+             # If details.title had extra junk (years, etc), maybe raw query works
+             recs = tfidf_recommend_titles(details.title.split('(')[0].strip(), top_n=tfidf_top_n)
+        except:
+             recs = []
     
     async def fetch_item(title, score):
         card = await attach_tmdb_card_by_title(title)
