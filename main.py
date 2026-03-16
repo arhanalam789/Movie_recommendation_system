@@ -151,6 +151,22 @@ async def tmdb_search_first(query: str) -> Optional[dict]:
     results = data.get("results", [])
     return results[0] if results else None
 
+# =========================
+# TF-IDF Helpers
+# =========================
+def build_title_to_idx_map(indices: Any) -> Dict[str, int]:
+    title_to_idx: Dict[str, int] = {}
+    if isinstance(indices, dict):
+        for k, v in indices.items():
+            title_to_idx[_norm_title(k)] = int(v)
+        return title_to_idx
+    try:
+        for k, v in indices.items():
+            title_to_idx[_norm_title(k)] = int(v)
+        return title_to_idx
+    except Exception:
+        raise RuntimeError("indices.pkl must be dict or pandas Series-like (with .items())")
+
 def get_local_idx_by_title(title: str) -> int:
     global TITLE_TO_IDX
     if TITLE_TO_IDX is None:
